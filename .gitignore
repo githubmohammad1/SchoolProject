@@ -1,0 +1,30 @@
+# .gitignore
+
+# -----------------
+# 1. Django/Python specifics
+# -----------------
+*.log
+*.pot
+*.pyc
+__pycache__/
+media/
+
+# Database files
+*.sqlite3
+
+# Environment files
+.env
+venv/
+env/
+school_env/ # <--- اسم بيئة العمل الخاصة بك (تأكد من مطابقتها للاسم الفعلي)
+
+# Settings files
+# احذر: إذا كان لديك ملف إعدادات سري يحتوي على مفاتيح سرية (مثل secret_key)
+# يجب تجاهله.
+local_settings.py 
+
+# -----------------
+# 2. OS generated files
+# -----------------
+.DS_Store
+Thumbs.db

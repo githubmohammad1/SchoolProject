@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }}</title>
+    <style>
+        body { font-family: Tahoma, Arial, sans-serif; padding: 20px; background-color: #f4f7f6; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #007bff; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; text-align: right; border-bottom: 1px solid #ddd; }
+        th { background-color: #007bff; color: white; }
+        tr:hover { background-color: #f1f1f1; }
+        .score-highest { font-weight: bold; color: green; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ page_title }}</h1>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>المرتبة</th>
+                    <th>اسم الطالب</th>
+                    <th>الدرجة النهائية</th>
+                    <th>تاريخ الانضمام</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for student in students %}
+                <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ student.name }}</td>
+                    <td class="{% if student.score > 95 %}score-highest{% endif %}">
+                        {{ student.score }}
+                    </td>
+                    <td>{{ student.date_joined|date:"Y-m-d" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <p style="margin-top: 30px; color: #555;">
+            تم جلب هذه البيانات مباشرة من قاعدة بيانات **MySQL** باستخدام Django ORM.
+        </p>
+    </div>
+</body>
+</html>

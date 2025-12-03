@@ -1,0 +1,38 @@
+<div class="container">
+    <h1>{{ page_title }}</h1>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>اسم الطالب (SQL)</th>
+                <th>الدرجة النهائية (SQL)</th>
+                <th>تفضيلات الواجهة (MongoDB)</th>
+                <th>الأنشطة المتاحة (MongoDB)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in combined_list %}
+            <tr>
+                <td>{{ item.sql_data.name }}</td>
+                <td>{{ item.sql_data.score }}</td>
+                
+                <td>
+                    {% if item.mongo_data %}
+                        الثيم: **{{ item.mongo_data.preferences.theme }}**
+                    {% else %}
+                        لا يوجد ملف شخصي
+                    {% endif %}
+                </td>
+                
+                <td>
+                    {% if item.mongo_data %}
+                        {% for activity in item.mongo_data.activities %}
+                            {{ activity }}{% if not forloop.last %}, {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
