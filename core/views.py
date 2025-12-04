@@ -3,17 +3,168 @@ from rest_framework import generics, status, viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from .permissions import IsTeacherOrAdmin, IsReadOnly
+from .permissions import *
 from rest_framework import permissions
+from django.shortcuts import render
+from django.http import HttpResponse
+
+from docx import Document
+from io import BytesIO
 # الاستيراد الموحد لجميع النماذج (باستخدام * مناسب هنا)
 from .models import * # الاستيراد الموحد لجميع الـ Serializers 
-from .serializers import (NotificationSerializer,
-    UserRegisterSerializer, UserSerializer, TeacherProfileSerializer, 
-    ParentProfileSerializer, StudentProfileSerializer, ClassSerializer, 
-    SubjectSerializer, CourseSerializer, AssignmentSerializer, GradeSerializer
-)
-# ************
+from .serializers import *
+from docx.enum.text import WD_ALIGN_PARAGRAPH # للاستخدام في محاذاة النص
+from docx.shared import Inches # لتحديد عرض الأعمدة
 
+def export_student_list_docx(request):
+    """
+    تجميع بيانات الطلاب وتصديرها كملف Word (.docx) مع دعم RTL والتوقيعات.
+    """
+    # 🛡️ التحقق من الصلاحيات (معلم أو مدير فقط)
+    if not request.user.is_staff and not (hasattr(request.user, 'teacher') and request.user.teacher):
+         return HttpResponse("غير مصرح لك باستخراج هذا التقرير.", status=403)
+         
+    # 📚 جلب بيانات الطلاب (مع جلب البيانات المرتبطة لتحسين الأداء)
+    students = Student.objects.select_related('user', 'class_ref', 'parent__user').all().order_by('class_ref__name', 'user__username')
+    
+    # 1. إنشاء مستند Word جديد
+    document = Document()
+    
+    # 2. إضافة عنوان (رئيسي) ومحاذاته لليمين (RTL)
+    heading = document.add_heading('قائمة الطلاب الرسمية في المدرسة', 0)
+    heading.alignment = WD_ALIGN_PARAGRAPH.RIGHT # محاذاة عنوان التقرير لليمين
+
+    # 3. إنشاء جدول وإضافة الرؤوس
+    table = document.add_table(rows=1, cols=5)
+    table.style = 'Table Grid'
+    
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = 'الرقم'
+    hdr_cells[1].text = 'اسم الطالب'
+    hdr_cells[2].text = 'الصف'
+    hdr_cells[3].text = 'تاريخ الميلاد'
+    hdr_cells[4].text = 'ولي الأمر'
+    
+    # تطبيق محاذاة لليمين على رؤوس الأعمدة
+    for cell in hdr_cells:
+        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    # 4. ملء صفوف الجدول ببيانات الطلاب
+    for i, student_profile in enumerate(students):
+        row_cells = table.add_row().cells
+        
+        # تجميع أسماء الطلاب والأولياء
+        student_name = f"{student_profile.user.first_name} {student_profile.user.last_name}" if student_profile.user.first_name else student_profile.user.username
+        parent_name = student_profile.parent.user.username if student_profile.parent and student_profile.parent.user else 'لا يوجد'
+        
+        # تصحيح الخطأ: الوصول إلى تاريخ الميلاد عبر student_profile.user
+        # dob = student_profile.user.date_of_birth.strftime('%Y-%m-%d') if student_profile.user.date_of_birth else 'غير محدد'
+
+        row_cells[0].text = str(i + 1)
+        row_cells[1].text = student_name
+        row_cells[2].text = student_profile.class_ref.name if student_profile.class_ref else 'غير محدد'
+        row_cells[3].text = parent_name
+        
+        # تطبيق محاذاة لليمين على محتوى الخلايا
+        for cell in row_cells:
+             cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    # -----------------------------------------------------
+    # 5. إضافة قسم التوقيعات (Signatures Section)
+    # -----------------------------------------------------
+    
+    # إضافة مسافة فاصلة بعد الجدول
+    document.add_paragraph()
+    document.add_paragraph() 
+    
+    # إنشاء جدول بسيط بصف واحد وعمودين لضمان تنسيق التوقيعات
+    signature_table = document.add_table(rows=1, cols=2)
+    
+    # تعيين عرض الأعمدة لتقسيم الصفحة
+    signature_table.columns[0].width = Inches(3.0) # أمين السر
+    signature_table.columns[1].width = Inches(3.0) # المدير
+
+    # الخلية اليمنى (المدير)
+    manager_cell = signature_table.cell(0, 1)
+    manager_paragraph = manager_cell.paragraphs[0]
+    manager_paragraph.text = "المدير: ________________"
+    # دفع توقيع المدير إلى أقصى اليمين
+    manager_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    
+    # الخلية اليسرى (أمين السر)
+    secretary_cell = signature_table.cell(0, 0)
+    secretary_paragraph = secretary_cell.paragraphs[0]
+    secretary_paragraph.text = "أمين السر: _____________"
+    # دفع توقيع أمين السر إلى أقصى اليسار
+    secretary_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    
+    # 6. حفظ المستند وإرجاع الاستجابة (باقي الكود كما هو)
+    f = BytesIO()
+    document.save(f)
+    f.seek(0)
+    
+    filename = 'Student_List.docx'
+    response = HttpResponse(
+        f.read(), 
+        content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    return response
+# ************
+class SchoolInfoViewSet(viewsets.ModelViewSet):
+    """
+    إدارة معلومات المدرسة (المدير، أمين السر، إلخ). 
+    يجب أن يكون الوصول مقيدًا بالإدارة العليا فقط.
+    """
+    queryset = SchoolInfo.objects.all()
+    serializer_class = SchoolInfoSerializer
+    # TODO: إضافة صلاحيات مخصصة (مثل IsPrincipalOrAdmin)
+    permission_classes = [IsSchoolAdministrator | IsReadOnly] 
+
+class AssessmentTypeViewSet(viewsets.ModelViewSet):
+    """
+    إدارة أنواع التقييمات وأوزانها (مذاكرة، مشروع، امتحان نهائي).
+    """
+    queryset = AssessmentType.objects.all()
+    serializer_class = AssessmentTypeSerializer
+    # TODO: إضافة صلاحيات مخصصة (مثل IsAdminUser)
+    # الصلاحية: المدرسون والمشرفون فقط هم من يمكنهم تعريف أنواع التقييمات
+    permission_classes = [IsTeacherOrAdmin | IsReadOnly]
+
+class BehaviorTypeViewSet(viewsets.ModelViewSet):
+    """
+    إدارة أنواع السلوكيات الإيجابية والسلبية وقيم النقاط.
+    """
+    queryset = BehaviorType.objects.all()
+    serializer_class = BehaviorTypeSerializer
+    # TODO: إضافة صلاحيات مخصصة (مثل IsAdminUser)
+    permission_classes = [IsTeacherOrAdmin | IsReadOnly]
+
+
+class BehaviorRecordViewSet(viewsets.ModelViewSet):
+    """
+    تسجيل وعرض السلوكيات (نقاط السلوك).
+    يجب أن يتمكن المدرسون من التسجيل، والإدارة من العرض والتحرير.
+    """
+    # يمكن للمدرسين رؤية كل السجلات التي تخص طلابهم أو جميع السجلات إذا كانوا إداريين
+    queryset = BehaviorRecord.objects.all() 
+    serializer_class = BehaviorRecordSerializer
+    # TODO: إضافة صلاحيات مخصصة لضمان أن المدرسين فقط هم من يمكنهم الإنشاء
+   # الصلاحية: القراءة مسموحة للجميع، والكتابة/الإنشاء فقط للمعلمين
+    permission_classes = [IsTeacherOrGuidance | IsReadOnly]
+    
+    def perform_create(self, serializer):
+        """تحديد المدرس الذي قام بتسجيل السلوك تلقائيًا."""
+        user = self.request.user
+        
+        # التأكد من أن المستخدم الحالي هو مدرس
+        if not hasattr(user, 'teacher'):
+            # استخدام PermissionDenied إذا لم يكن المستخدم معلمًا
+            raise exceptions.PermissionDenied("Only teachers are allowed to record behavior.")
+
+        # حفظ السجل وتعيين المدرس الحالي كـ recorded_by
+        serializer.save(recorded_by=user.teacher)
 class GradeViewSet(viewsets.ModelViewSet):
     # ندمج الصلاحيتين: إما أن تكون مدرساً/مشرفاً، أو مجرد مستخدم مسجل للدخول (للقراءة فقط)
     permission_classes = [IsTeacherOrAdmin | permissions.IsAuthenticated]

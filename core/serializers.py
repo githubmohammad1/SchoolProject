@@ -3,7 +3,43 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 # استيراد جميع النماذج التي سيتم استخدامها في Serializers
-from .models import Teacher, ParentProfile, Student, Subject, Class, Course, Grade,Assignment, Notification
+# from .models import Teacher, ParentProfile,Student, Subject, Class, Course, Grade,Assignment, Notification, SchoolInfo, AssessmentType, BehaviorType, BehaviorRecord
+ # النماذج الجديدة
+from .models import *
+class SchoolInfoSerializer(serializers.ModelSerializer):
+    """لعرض وتعديل معلومات المدرسة الرسمية (المدير، أمين السر)"""
+    class Meta:
+        model = SchoolInfo
+        fields = '__all__'
+        
+class AssessmentTypeSerializer(serializers.ModelSerializer):
+    """لإدارة أنواع التقييمات (مذاكرة، امتحان نهائي) وأوزانها"""
+    class Meta:
+        model = AssessmentType
+        fields = '__all__'
+
+class BehaviorTypeSerializer(serializers.ModelSerializer):
+    """لإدارة أنواع السلوكيات (إيجابي/سلبي، والنقاط الممنوحة)"""
+    class Meta:
+        model = BehaviorType
+        fields = '__all__'
+
+class BehaviorRecordSerializer(serializers.ModelSerializer):
+    """لتسجيل حادثة سلوكية لطالب معين"""
+    # لعرض اسم الطالب ونوع السلوك والمدرس الذي سجل الحادثة
+    student_name = serializers.CharField(source='student.user.username', read_only=True)
+    behavior_name = serializers.CharField(source='behavior_type.name', read_only=True)
+    recorded_by_name = serializers.CharField(source='recorded_by.user.username', read_only=True)
+    
+    class Meta:
+        model = BehaviorRecord
+        fields = ('id', 'student', 'student_name', 'behavior_type', 'behavior_name', 
+                  'recorded_by', 'recorded_by_name', 'date', 'points_change')
+        read_only_fields = ('date', 'points_change')
+        # جعل المفتاح الخارجي للمدرس للقراءة فقط في العرض
+        extra_kwargs = {
+            'recorded_by': {'read_only': True} 
+        }
 # سنضيف Assignment و Grade لاحقًا في Sprint 3
 
 # ----------------------------------------
@@ -61,7 +97,14 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Teacher
-        fields = ('id', 'user', 'specialization', 'hire_date') 
+        fields = ('id', 'user', 'specialization', 'hire_date', 
+                  'is_principal', 'is_secretary', 'is_guidance_counselor')
+        read_only_fields = (
+            'is_principal', 
+            'is_secretary', 
+            'is_guidance_counselor', 
+            # أي حقول أخرى لا نريد للمستخدمين التحكم بها
+        )
         
 class ParentProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True) 
@@ -117,13 +160,16 @@ class GradeSerializer(serializers.ModelSerializer):
 class AssignmentSerializer(serializers.ModelSerializer):
     """لإدارة الواجبات والامتحانات"""
     course_name = serializers.CharField(source='course.name', read_only=True)
-    
+    assessment_type_name = serializers.CharField(source='assessment_type.name', read_only=True)
     class Meta:
         model = Assignment
         # تأكد من أن جميع الحقول متطابقة مع نموذج Assignment في models.py
-        fields = ('id', 'course', 'course_name', 'title', 'description', 'max_score', 'due_date', 'created_at')
+        fields = ('id', 'course', 'course_name', 'title', 'description', 
+                  'max_score', 'due_date', 'created_at', 
+                  'assessment_type', 'assessment_type_name')
         extra_kwargs = {
             'course': {'write_only': True},
+            'assessment_type': {'write_only': True}, # السماح بإرسال الـ ID
             'created_at': {'read_only': True}
         }
 

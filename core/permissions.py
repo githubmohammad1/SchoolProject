@@ -41,3 +41,43 @@ class IsReadOnly(permissions.BasePermission):
             return True
         # الكتابة غير مسموحة إلا إذا سمح بها منطق ViewSet
         return False
+class IsTeacherOrGuidance(permissions.BasePermission):
+    """
+    يسمح بالوصول إذا كان المستخدم معلمًا أو موجهًا طلابيًا (لتسجيل السلوك).
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        if not user.is_authenticated:
+            return False
+
+        if user.is_staff:
+            return True
+
+        try:
+            # التحقق إذا كان User لديه ملف Teacher
+            if hasattr(user, 'teacher'):
+                # يسمح لجميع المعلمين بتسجيل السلوك (لأنهم يراقبون الفصل)
+                return True
+            return False
+        except:
+            return False
+
+class IsSchoolAdministrator(permissions.BasePermission):
+    """
+    يسمح بالوصول إذا كان المستخدم مشرفًا أو مديرًا أو أمين سر.
+    يستخدم لإدارة SchoolInfo وأنواع التقييمات/السلوكيات.
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        if not user.is_authenticated:
+            return False
+
+        if user.is_staff:
+            return True
+            
+        try:
+            # يجب أن يكون لديه ملف معلم مع دور إداري
+            teacher_profile = user.teacher
+            return teacher_profile.is_principal or teacher_profile.is_secretary
+        except:
+            return False

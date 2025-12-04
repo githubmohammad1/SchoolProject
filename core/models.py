@@ -29,11 +29,20 @@ class Subject(models.Model):
 # -----------------
 # 2. نماذج المستخدمين (Profiles)
 # -----------------
+class AssessmentType(models.Model):
+    name = models.CharField(max_length=100, unique=True, verbose_name="نوع التقييم")
+    weight_percentage = models.DecimalField(max_digits=5, decimal_places=2, 
+                                            default=0.00, verbose_name="الوزن النسبي في المعدل العام للمادة")
 
+    def __str__(self):
+        return self.name
 class Teacher(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE) 
     specialization = models.CharField(max_length=100, blank=True)
     hire_date = models.DateField(null=True, blank=True)
+    is_principal = models.BooleanField(default=False, verbose_name="مدير المدرسة")
+    is_secretary = models.BooleanField(default=False, verbose_name="أمين السر")
+    is_guidance_counselor = models.BooleanField(default=False, verbose_name="موجه طلابي")
 
     def __str__(self):
         return f"Teacher: {self.user.username}"
@@ -44,6 +53,8 @@ class Assignment(models.Model):
     max_score = models.DecimalField(max_digits=5, decimal_places=2)
     due_date = models.DateTimeField() 
     created_at = models.DateTimeField(auto_now_add=True)
+    assessment_type = models.ForeignKey(AssessmentType, on_delete=models.SET_NULL, null=True, 
+                                        verbose_name="تصنيف التقييم")
 
     def __str__(self):
         return f"{self.title} ({self.course.name})"
@@ -58,7 +69,7 @@ class ParentProfile(models.Model):
 class Student(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     student_id = models.CharField(max_length=20, unique=True)
-    
+    date_of_birth = models.DateField(null=True, blank=True, verbose_name="تاريخ الميلاد")
     # حقل class_ref أصبح صحيحاً الآن
     class_ref = models.ForeignKey(Class, on_delete=models.SET_NULL, null=True, blank=True, related_name='students_in_class')
     
@@ -71,7 +82,14 @@ class Student(models.Model):
 # -----------------
 # 3. نموذج الدورة التدريبية (Course)
 # -----------------
+class SchoolInfo(models.Model):
+    principal_name = models.CharField(max_length=100, verbose_name="اسم المدير")
+    secretary_name = models.CharField(max_length=100, verbose_name="اسم أمين السر")
+    # يمكن إضافة المزيد من التفاصيل (العنوان، الشعار، إلخ)
 
+    class Meta:
+        verbose_name = "معلومات المدرسة"
+        verbose_name_plural = "معلومات المدرسة"
 class Course(models.Model):
     teacher = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True, related_name='teaching_courses')
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
@@ -163,3 +181,29 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"الإشعار لـ {self.user.username}: {self.title}"
+
+
+class BehaviorType(models.Model):
+    name = models.CharField(max_length=255, unique=True, verbose_name="نوع السلوك")
+    is_positive = models.BooleanField(default=False, verbose_name="إيجابي؟")
+    points = models.IntegerField(default=1, verbose_name="النقاط المكتسبة/المفقودة")
+    
+    def __str__(self):
+        return f"[{'✅' if self.is_positive else '❌'}] {self.name}"
+
+class BehaviorRecord(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='behavior_records', verbose_name="الطالب")
+    behavior_type = models.ForeignKey(BehaviorType, on_delete=models.PROTECT, verbose_name="نوع السلوك")
+    recorded_by = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="سجله المدرس")
+    date = models.DateTimeField(auto_now_add=True, verbose_name="تاريخ التسجيل")
+    
+    # لسهولة التقرير
+    points_change = models.IntegerField(editable=False, verbose_name="تغيير النقاط") 
+    
+    def save(self, *args, **kwargs):
+        # حفظ قيمة النقاط بناءً على نوع السلوك
+        self.points_change = self.behavior_type.points if self.behavior_type.is_positive else -self.behavior_type.points
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.student.user.username} - {self.behavior_type.name}"
