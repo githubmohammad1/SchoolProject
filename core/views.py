@@ -58,12 +58,13 @@ def export_student_list_docx(request):
         parent_name = student_profile.parent.user.username if student_profile.parent and student_profile.parent.user else 'لا يوجد'
         
         # تصحيح الخطأ: الوصول إلى تاريخ الميلاد عبر student_profile.user
-        # dob = student_profile.user.date_of_birth.strftime('%Y-%m-%d') if student_profile.user.date_of_birth else 'غير محدد'
+        dob = student_profile.date_of_birth.strftime('%Y-%m-%d') if student_profile.date_of_birth else 'غير محدد'
 
         row_cells[0].text = str(i + 1)
         row_cells[1].text = student_name
         row_cells[2].text = student_profile.class_ref.name if student_profile.class_ref else 'غير محدد'
-        row_cells[3].text = parent_name
+        row_cells[3].text = dob
+        row_cells[4].text = parent_name
         
         # تطبيق محاذاة لليمين على محتوى الخلايا
         for cell in row_cells:

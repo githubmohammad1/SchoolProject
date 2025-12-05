@@ -1,45 +1,28 @@
-
+import os
 from pathlib import Path
-from mongoengine import connect
+from datetime import timedelta
+import dj_database_url  # مكتبة للربط بقواعد البيانات السحابية
+from mongoengine import connect # إذا كنت مصرّاً على استخدام MongoDB بجانب SQL
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# ==============================================
+# إعدادات الأمان والبيئة (Production vs Local)
+# ==============================================
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+# جلب المفتاح السري من متغيرات البيئة، أو استخدام قيمة افتراضية للتطوير فقط
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-change-me-please-local-key')
 
-# SECURITY WARNING: keep the secret key used in production secret!
+# اجعلها True فقط إذا لم يتم تحديدها كـ False في السيرفر (للأمان)
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-import os
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'default-fallback-key-for-dev')
-from datetime import timedelta
+# السماح لجميع النطاقات مؤقتاً للنسخة التجريبية
+ALLOWED_HOSTS = ['*']
 
-
-
-
-DEBUG = True
-
-ALLOWED_HOSTS = ['*'] # يجب تغييرها لنطاق الإنتاج لاحقاً
-CORS_ALLOWED_ORIGINS = []
-# 4. إعداد الـ HASHERS (تجزئة كلمات المرور)
-# 2. إعداد الـ HASHERS (تجزئة كلمات المرور)
-PASSWORD_HASHERS = [
-    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher', 
-    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
-    # ...
-]
-
-
-TEMPLATES = [
-    {
-        # ... إعدادات أخرى ...
-        'DIRS': [BASE_DIR / 'templates'], # تأكد من وجود هذا السطر إذا كان المجلد في جذر المشروع
-        'APP_DIRS': True, # هذا يسمح لـ Django بالبحث في مجلد templates داخل كل تطبيق (core)
-        # ...
-    },
-]
-
-# Application definition
+# ==============================================
+# التطبيقات المثبتة
+# ==============================================
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -48,14 +31,21 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    
+    # تطبيقات الطرف الثالث
+    'rest_framework',
+    'rest_framework_simplejwt',
+    'corsheaders',  # هام جداً للربط مع الفرونت إند
+    'drf_yasg',
+    # تطبيقك
     'core',
-'rest_framework',         # مطلوب لـ DRF
-    'rest_framework_simplejwt', # مطلوب لـ JWT
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # <--- ضروري جداً للمخدمات المجانية (لملفات CSS/JS)
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',       # <--- يجب أن يكون قبل CommonMiddleware
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -68,10 +58,11 @@ ROOT_URLCONF = 'SchoolProject.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'], # دمجنا الإعدادات هنا
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
+                'django.template.context_processors.debug',
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
@@ -82,74 +73,76 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'SchoolProject.wsgi.application'
 
+# ==============================================
+# إعدادات قواعد البيانات (SQL Database)
+# ==============================================
 
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
+# المخدمات المجانية مثل Render تستخدم PostgreSQL
+# هذا الكود يختار تلقائياً بين SQLite (محلياً) و PostgreSQL (على السيرفر)
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default='sqlite:///' + os.path.join(BASE_DIR, 'db.sqlite3'),
+        conn_max_age=600
+    )
 }
 
+# ==============================================
+# إعدادات MongoDB (إذا كنت تستخدمها فعلياً)
+# ==============================================
 
-# Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
+# ملاحظة: الكود السابق الذي كتبناه يعتمد كلياً على Django ORM (SQL)
+# إذا كنت تحتاج MongoDB لأشياء أخرى، نستخدم متغير بيئة للاتصال بـ Atlas MongoDB
+MONGO_URI = os.environ.get('MONGO_URI') 
+if MONGO_URI:
+    connect(host=MONGO_URI)
+else:
+    # الاتصال المحلي عند التطوير
+    try:
+        connect(db='school_mongo_db', host='localhost', port=27017)
+    except:
+        pass # تجاهل الخطأ إذا لم تكن MongoDB مثبتة محلياً
 
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+# ==============================================
+# إعدادات التشفير والتحقق
+# ==============================================
+
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
 ]
 
+AUTH_PASSWORD_VALIDATORS = [
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
+]
 
-# Internationalization
-# https://docs.djangoproject.com/en/5.2/topics/i18n/
+# ==============================================
+# التدويل والوقت
+# ==============================================
 
-LANGUAGE_CODE = 'en-us'
-
+LANGUAGE_CODE = 'ar-sa' # تم التغيير للعربية
 TIME_ZONE = 'UTC'
-
 USE_I18N = True
-
 USE_TZ = True
 
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
+# ==============================================
+# الملفات الثابتة (Static Files)
+# ==============================================
 
 STATIC_URL = 'static/'
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+# ضغط وتخزين الملفات لتعمل على السيرفر
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# ==============================================
+# إعدادات REST Framework & JWT
+# ==============================================
 
-# ====== إعدادات MongoDB ======
-
-
-# يتم الاتصال بقاعدة بيانات MongoDB (نفترض أنها تعمل على المنفذ الافتراضي 27017)
-MONGO_DATABASE_NAME = 'school_mongo_db' # اسم قاعدة بيانات MongoDB الخاصة بنا
-
-connect(
-    db=MONGO_DATABASE_NAME,
-    host='localhost',
-    port=27017  # المنفذ الافتراضي لـ MongoDB
-)
-
-
-# 3. إعدادات JWT (كما كانت سابقاً)
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -159,20 +152,19 @@ REST_FRAMEWORK = {
     )
 }
 
-
-
-from datetime import timedelta
-
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=50),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60), # تم زيادة الوقت قليلاً
     'REFRESH_TOKEN_LIFETIME': timedelta(days=90),
-    # ...
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': False,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY, # استخدام نفس مفتاح التطبيق
 }
 
+# ==============================================
+# إعدادات CORS (للربط مع المتصفحات والموبايل)
+# ==============================================
 
-
-
-
-
-
-# =============================
+# في الإصدار التجريبي نسمح للجميع
+CORS_ALLOW_ALL_ORIGINS = True 
+CORS_ALLOW_CREDENTIALS = True
