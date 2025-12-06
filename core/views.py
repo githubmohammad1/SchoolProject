@@ -208,22 +208,53 @@ class SubjectViewSet(viewsets.ModelViewSet):
 
 
 class CourseViewSet(viewsets.ModelViewSet):
-    queryset = Course.objects.all()
+    """
+    إدارة المواد الدراسية.
+    - المعلم يرى المواد التي يدرسها.
+    - الطالب يرى المواد الخاصة بصفه.
+    - المشرف يرى كل شيء.
+    """
     serializer_class = CourseSerializer
-    permission_classes = [IsTeacherOrAdmin] # بقيت صلاحيات التعديل للمدرس/المشرف فقط
+    permission_classes = [permissions.IsAuthenticated] # أي مستخدم مسجل يمكنه القراءة
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff:
-            return Course.objects.all()
-        
-        # المدرس يرى الدورات التي يدرسها فقط
-        if hasattr(user, 'teacher'):
-            return Course.objects.filter(teacher=user.teacher)
-            
-        # غير المدرسين والمشرفين لا يحتاجون لرؤية جميع الدورات (يمكن تعديلها لاحقاً)
-        return Course.objects.none()
 
+        # 1. إذا كان المشرف أو المدير
+        if user.is_staff or user.is_superuser:
+            return Course.objects.all()
+
+        # 2. إذا كان معلماً
+        if hasattr(user, 'teacher'):
+            # يرجع المواد التي تم ربط هذا المعلم بها تحديداً
+            return Course.objects.filter(teacher=user.teacher)
+
+        # 3. إذا كان طالباً
+        if hasattr(user, 'student'):
+            student_profile = user.student
+            # نتأكد أولاً أن الطالب مربوط بصف (class_ref)
+            if student_profile.class_ref:
+                # يرجع كل المواد المرتبطة بنفس صف الطالب
+                return Course.objects.filter(class_level=student_profile.class_ref)
+            else:
+                return Course.objects.none() # طالب بلا صف لا يرى مواد
+
+        # 4. إذا كان ولي أمر (اختياري: يرى مواد أبنائه)
+        if hasattr(user, 'parentprofile'):
+             # يمكننا تركها فارغة حالياً أو جلب مواد الأبناء
+             return Course.objects.none()
+
+        return Course.objects.none()
+class StudentViewSet(viewsets.ModelViewSet):
+    serializer_class = StudentProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        # المعلم يرى جميع الطلاب (أو يمكن فلترتهم حسب الصفوف التي يدرسها)
+        if hasattr(user, 'teacher') or user.is_staff:
+            return Student.objects.all()
+        return Student.objects.none()
 class RegisterView(generics.CreateAPIView):
     serializer_class = UserRegisterSerializer
     # يجب أن يكون مسموحاً للجميع بالتسجيل
