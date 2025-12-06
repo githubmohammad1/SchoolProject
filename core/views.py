@@ -272,49 +272,65 @@ class RegisterView(generics.CreateAPIView):
 # 2. عرض الملف الشخصي (Profile View)
 # ----------------------------------------
 class ProfileView(APIView):
-    # يتطلب مصادقة (JWT)
     permission_classes = (IsAuthenticated,) 
 
     def get(self, request, *args, **kwargs):
-        # المستخدم الذي تم التحقق من هويته عبر JWT موجود في request.user
         user = request.user
         profile_data = {}
-        role = None
+        role = 'guest' # القيمة الافتراضية
 
-        # 1. التحقق من نوع الملف الشخصي وتطبيق Serializer المناسب
-        
-        try:
-            # ملف الأستاذ
-            teacher_profile = user.teacher
-            serializer = TeacherProfileSerializer(teacher_profile)
+        # 1. فحص المدير (Admin)
+        if user.is_staff or user.is_superuser:
+            role = 'admin'
+            profile_data = UserSerializer(user).data
+            profile_data['id'] = user.id
+
+        # 2. فحص المعلم (Teacher)
+        # نستخدم try/except لأنها أدق من hasattr في بعض الحالات
+        elif self._is_teacher(user):
             role = 'teacher'
-        except Teacher.DoesNotExist:
-            try:
-                # ملف ولي الأمر
-                parent_profile = user.parentprofile
-                serializer = ParentProfileSerializer(parent_profile)
-                role = 'parent'
-            except ParentProfile.DoesNotExist:
-                try:
-                    # ملف الطالب
-                    student_profile = user.student
-                    serializer = StudentProfileSerializer(student_profile)
-                    role = 'student'
-                except Student.DoesNotExist:
-                    # إذا لم يكن له أي ملف شخصي (مشكلة في البيانات، أو مستخدم عادي)
-                    return Response({
-                        "message": "لا يوجد ملف شخصي مرتبط بهذا المستخدم.",
-                        "user_id": user.id
-                    }, status=status.HTTP_404_NOT_FOUND)
+            profile_data = TeacherProfileSerializer(user.teacher).data
+
+        # 3. فحص الطالب (Student)
+        elif self._is_student(user):
+            role = 'student'
+            profile_data = StudentProfileSerializer(user.student).data
+
+        # 4. فحص ولي الأمر (Parent)
+        elif self._is_parent(user):
+            role = 'parent'
+            profile_data = ParentProfileSerializer(user.parentprofile).data
+            
+        else:
+            return Response({
+                "message": "المستخدم ليس له دور محدد (معلم/طالب/ولي أمر)",
+                "role": "guest"
+            }, status=status.HTTP_200_OK) # نرجع 200 بدل 404 لكي لا ينهار التطبيق
         
-        profile_data = serializer.data
-        
-        # 2. بناء الاستجابة النهائية
         return Response({
             "status": "success",
             "role": role,
             "profile": profile_data
         }, status=status.HTTP_200_OK)
+
+    # دوال مساعدة للتحقق (Helpers)
+    def _is_teacher(self, user):
+        try:
+            return user.teacher is not None
+        except Teacher.DoesNotExist:
+            return False
+
+    def _is_student(self, user):
+        try:
+            return user.student is not None
+        except Student.DoesNotExist:
+            return False
+
+    def _is_parent(self, user):
+        try:
+            return user.parentprofile is not None
+        except ParentProfile.DoesNotExist:
+            return False
 
 
 class NotificationViewSet(viewsets.ModelViewSet):
